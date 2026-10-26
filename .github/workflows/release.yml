@@ -1,0 +1,84 @@
+name: Publish Android release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install SDK packages
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Require tag and version agreement
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          values=dict(line.split('=',1) for line in open('version.properties').read().splitlines())
+          assert os.environ['RELEASE_TAG']=='v'+values['versionName'], 'Tag must match version.properties'
+          assert int(values['versionCode'])>0
+          PY
+      - name: Restore signing material
+        env:
+          RELEASE_KEYSTORE: ${{ secrets.FITT_RELEASE_KEYSTORE }}
+          LEGACY_KEYSTORE: ${{ secrets.FITT_LEGACY_KEYSTORE }}
+        run: |
+          test -n "$RELEASE_KEYSTORE" && test -n "$LEGACY_KEYSTORE"
+          umask 077
+          printf '%s' "$RELEASE_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/fitt-release.p12"
+          printf '%s' "$LEGACY_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/fitt-legacy.p12"
+      - name: Validate and build signed APKs
+        env:
+          FITT_RELEASE_STORE_PATH: ${{ runner.temp }}/fitt-release.p12
+          FITT_RELEASE_STORE_PASSWORD: ${{ secrets.FITT_RELEASE_STORE_PASSWORD }}
+          FITT_RELEASE_KEY_ALIAS: ${{ secrets.FITT_RELEASE_KEY_ALIAS }}
+          FITT_RELEASE_KEY_PASSWORD: ${{ secrets.FITT_RELEASE_KEY_PASSWORD }}
+          FITT_LEGACY_STORE_PATH: ${{ runner.temp }}/fitt-legacy.p12
+          FITT_LEGACY_STORE_PASSWORD: ${{ secrets.FITT_LEGACY_STORE_PASSWORD }}
+          FITT_LEGACY_KEY_ALIAS: ${{ secrets.FITT_LEGACY_KEY_ALIAS }}
+          FITT_LEGACY_KEY_PASSWORD: ${{ secrets.FITT_LEGACY_KEY_PASSWORD }}
+        run: bash ./gradlew :interchange:test :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:assembleLegacy --stacktrace
+      - name: Verify signatures and create update feed
+        run: python scripts/release.py package
+      - name: Prevent duplicate or lower version codes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          current=json.loads(Path('dist/update.json').read_text())
+          releases=json.loads(subprocess.check_output(['gh','api','repos/${{ github.repository }}/releases']))
+          for release in releases:
+              if release['draft'] or release['prerelease']: continue
+              asset=next((a for a in release['assets'] if a['name']=='update.json'),None)
+              if asset:
+                  import urllib.request
+                  old=json.load(urllib.request.urlopen(asset['browser_download_url'],timeout=20))
+                  assert current['versionCode']>old['versionCode'], 'versionCode must increase for every release'
+                  break
+          PY
+      - name: Publish download assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/fitt.apk dist/fitt-legacy.apk dist/update.json dist/SHA256SUMS.txt --verify-tag --latest --title "Fitt ${RELEASE_TAG#v}" --notes-file .github/release-notes.md
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/fitt-release.p12" "$RUNNER_TEMP/fitt-legacy.p12"

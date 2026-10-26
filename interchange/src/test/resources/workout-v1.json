@@ -1,0 +1,35 @@
+{
+  "format": "fitt.workouts",
+  "schemaVersion": 1,
+  "exportedAtEpochMillis": 2000,
+  "routines": [
+    {
+      "id": "routine-1",
+      "name": "Strength A",
+      "exercises": [
+        { "id": "exercise-1", "name": "Squat", "targetSets": 3, "targetReps": 5 }
+      ]
+    }
+  ],
+  "workouts": [
+    {
+      "id": "workout-1",
+      "name": "Strength A",
+      "routineId": "routine-1",
+      "startedAtEpochMillis": 1000,
+      "completedAtEpochMillis": 1800,
+      "exercises": [
+        {
+          "id": "logged-exercise-1",
+          "name": "Squat",
+          "sets": [
+            { "reps": 5, "weight": 42.5, "weightUnit": "KG" },
+            { "reps": 5, "weight": 95.0, "weightUnit": "LB" },
+            { "reps": 8, "weight": null, "weightUnit": "KG" },
+            { "reps": 8, "weight": 0.0, "weightUnit": "KG" }
+          ]
+        }
+      ]
+    }
+  ]
+}

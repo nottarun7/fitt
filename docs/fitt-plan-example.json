@@ -1,0 +1,26 @@
+{
+  "format": "fitt.plan",
+  "schemaVersion": 1,
+  "sourceId": "my-training-and-diet-plan",
+  "routines": [
+    {
+      "id": "full-body-a",
+      "name": "Full body A",
+      "exercises": [
+        {"id": "chest-press", "name": "Machine chest press", "metric": "REPS", "sets": 3, "target": 8, "perSide": false, "assistance": false},
+        {"id": "tuck-hold", "name": "Tuck hold", "metric": "SECONDS", "sets": 3, "target": 20, "perSide": false, "assistance": false}
+      ]
+    }
+  ],
+  "foods": [],
+  "dietSchedules": [
+    {
+      "id": "breakfast",
+      "name": "Breakfast",
+      "days": ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"],
+      "time": null,
+      "notes": "Example only: copy the actual breakfast foods and quantities from your source here. Nutrition was not provided.",
+      "items": []
+    }
+  ]
+}

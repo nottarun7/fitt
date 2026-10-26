@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:fitt:plan:v1",
+  "title": "Fitt plan import v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "schemaVersion", "sourceId"],
+  "properties": {
+    "format": {"const": "fitt.plan"},
+    "schemaVersion": {"const": 1},
+    "sourceId": {"$ref": "#/$defs/id"},
+    "routines": {"type": "array", "items": {"$ref": "#/$defs/routine"}},
+    "foods": {"type": "array", "items": {"$ref": "#/$defs/food"}},
+    "dietSchedules": {"type": "array", "items": {"$ref": "#/$defs/schedule"}}
+  },
+  "anyOf": [{"required":["routines"],"properties":{"routines":{"minItems":1}}},{"required":["foods"],"properties":{"foods":{"minItems":1}}},{"required":["dietSchedules"],"properties":{"dietSchedules":{"minItems":1}}}],
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"},
+    "text": {"type": "string", "minLength": 1, "maxLength": 16384, "pattern": "\\S"},
+    "nutrient": {"type": "number", "minimum": 0, "maximum": 100000},
+    "exercise": {
+      "type":"object","additionalProperties":false,"required":["id","name","metric","sets","target"],
+      "properties":{"id":{"$ref":"#/$defs/id"},"name":{"$ref":"#/$defs/text"},"metric":{"enum":["REPS","SECONDS"]},"sets":{"type":"integer","minimum":1,"maximum":2147483647},"target":{"type":"integer","minimum":1,"maximum":2147483647},"perSide":{"type":"boolean","default":false},"assistance":{"type":"boolean","default":false}}
+    },
+    "routine": {
+      "type":"object","additionalProperties":false,"required":["id","name","exercises"],
+      "properties":{"id":{"$ref":"#/$defs/id"},"name":{"$ref":"#/$defs/text"},"exercises":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/exercise"}}}
+    },
+    "food": {
+      "type":"object","additionalProperties":false,"required":["id","name","servingLabel","calories","protein","carbs","fat"],
+      "properties":{"id":{"$ref":"#/$defs/id"},"name":{"$ref":"#/$defs/text"},"servingLabel":{"$ref":"#/$defs/text"},"calories":{"$ref":"#/$defs/nutrient"},"protein":{"$ref":"#/$defs/nutrient"},"carbs":{"$ref":"#/$defs/nutrient"},"fat":{"$ref":"#/$defs/nutrient"}}
+    },
+    "item": {
+      "type":"object","additionalProperties":false,"required":["foodId","servings"],
+      "properties":{"foodId":{"$ref":"#/$defs/id"},"servings":{"type":"number","exclusiveMinimum":0,"maximum":10000}}
+    },
+    "schedule": {
+      "type":"object","additionalProperties":false,"required":["id","name","days"],
+      "properties":{"id":{"$ref":"#/$defs/id"},"name":{"$ref":"#/$defs/text"},"days":{"type":"array","minItems":1,"uniqueItems":true,"items":{"enum":["MON","TUE","WED","THU","FRI","SAT","SUN"]}},"time":{"type":["string","null"],"pattern":"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$","default":null},"notes":{"type":"string","maxLength":16384,"default":""},"items":{"type":"array","items":{"$ref":"#/$defs/item"},"default":[]}},
+      "anyOf":[{"required":["items"],"properties":{"items":{"minItems":1}}},{"required":["notes"],"properties":{"notes":{"$ref":"#/$defs/text"}}}]
+    }
+  },
+  "$comment": "The importer also enforces list-ID uniqueness, food references, Unicode validity, nesting/size/record limits, and stable ID generation. Schema validation alone is not an import preview."
+}
