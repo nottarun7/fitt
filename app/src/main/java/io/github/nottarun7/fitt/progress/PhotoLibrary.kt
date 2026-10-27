@@ -74,7 +74,6 @@ class PhotoLibrary(private val context: Context, private val database: WorkoutDa
         database.photos().save(updated)
     }
     suspend fun delete(id: String) = locked { database.photos().delete(listOf(id)); cleanup() }
-    suspend fun collectUnused() = locked { cleanup() }
 
     /** New blobs become durable before the Room transaction; old referenced blobs survive failures/crashes. */
     suspend fun restore(store: BackupStore, plan: BackupPlan, staged: Map<String, File>): ImportSummary = locked {
@@ -90,7 +89,6 @@ class PhotoLibrary(private val context: Context, private val database: WorkoutDa
         } finally { withContext(NonCancellable) { cleanup() } }
     }
     suspend fun missing(photos: List<BackupPhoto>): List<BackupPhoto> = locked { photos.distinctBy { it.sha256 }.filter { !valid(it) } }
-    suspend fun repairCount(photos: List<BackupPhoto>): Int = missing(photos).size
 
     suspend fun galleryCopy(id: String): Uri = locked {
         val row = database.photos().photo(id) ?: throw IllegalArgumentException("This photo was removed.")

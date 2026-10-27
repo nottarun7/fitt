@@ -10,7 +10,7 @@ Fitt **0.1.1** (versionCode **3**) improves workout entry and the native interfa
 
 - A consistent blue/slate theme for both light and dark mode, with bundled **Barlow** and **Barlow Condensed** fonts that work offline.
 - Flatter routine, food and history lists, more deliberate spacing, clearer calorie/macro summaries, and simpler navigation and progress controls.
-- Original native Jetpack Compose components, informed by design research and Skiper UI references. No React components or web UI are embedded in the app. See the [design notes](https://github.com/nottarun7/fitt/blob/main/docs/ui-design.md) and included font licenses.
+- Native Android components with offline fonts and consistent controls throughout the app.
 
 ### Your data stays in place
 

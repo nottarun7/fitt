@@ -21,8 +21,8 @@ android {
         applicationId = "io.github.nottarun7.fitt"
         minSdk = 26
         targetSdk = 36
-        versionCode = providers.gradleProperty("fittVersionCode").orNull?.toInt() ?: appVersion.getProperty("versionCode").toInt()
-        versionName = providers.gradleProperty("fittVersionName").orNull ?: appVersion.getProperty("versionName")
+        versionCode = appVersion.getProperty("versionCode").toInt()
+        versionName = appVersion.getProperty("versionName")
         testInstrumentationRunner = "io.github.nottarun7.fitt.FittTestRunner"
     }
     compileOptions {
@@ -49,7 +49,6 @@ android {
     }
     buildFeatures { compose = true; buildConfig = true }
     sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
-    sourceSets["main"].assets.srcDir("$rootDir/docs")
 }
 listOf("Release" to "RELEASE", "Legacy" to "LEGACY").forEach { (variant, channel) ->
     tasks.matching { it.name == "pre${variant}Build" }.configureEach {
@@ -78,7 +77,6 @@ dependencies {
     implementation(libs.room.ktx)
     implementation(libs.health.connect)
     ksp(libs.room.compiler)
-    debugImplementation(libs.compose.tooling)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.core)

@@ -58,7 +58,6 @@ interface NutritionDao {
     @Transaction @Query("SELECT * FROM meals ORDER BY id") suspend fun meals(): List<MealWithItems>
     @Transaction @Query("SELECT * FROM diet_schedules ORDER BY id") suspend fun schedules(): List<ScheduleWithItems>
     @Query("SELECT * FROM nutrition_settings WHERE id = 1") suspend fun settings(): NutritionSettingsEntity?
-    @Query("SELECT * FROM foods WHERE id = :id") suspend fun food(id: String): FoodEntity?
     @Transaction @Query("SELECT * FROM diet_schedules WHERE id = :id") suspend fun schedule(id: String): ScheduleWithItems?
     @Upsert suspend fun saveFood(food: FoodEntity)
     @Upsert suspend fun saveMeal(meal: MealEntity)

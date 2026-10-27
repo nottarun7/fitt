@@ -83,7 +83,7 @@ class PhotoLibraryTest {
         val row = add(); val expected = store.export(); val zip = archive(expected)
         photos.file(row.sha256).delete()
         val (document, staged) = staged(zip); val plan = store.preview(document)
-        assertFalse(plan.hasChanges); assertEquals(1, photos.repairCount(plan.desired.photos))
+        assertFalse(plan.hasChanges); assertEquals(1, photos.missing(plan.desired.photos).size)
         photos.restore(store, plan, staged); assertTrue(photos.valid(row.portable()))
         assertFalse(photos.validateStaged(row.portable().copy(width = 999), staged.getValue(row.sha256)))
         assertEquals(expected, store.export())

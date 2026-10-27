@@ -159,13 +159,13 @@ Exact restore of full photo scope can remove private photos; false scope always
 preserves them. Metadata fingerprints exclude export time and photoScope (a file
 inclusion marker), but include every photo descriptor. File repair from an identical
 ZIP is handled by the Android layer even when no metadata change is needed.
-Do not relabel an incompatible document as v4.
+Do not relabel an incompatible document as v5.
 
 ## LLM-friendly plan import v1
 
 `PlanJson` reads the separate `fitt.plan` marker and schema version 1. The bundled
-[guide](../docs/import-guide.md), [template](../docs/fitt-plan-example.json), and
-[JSON Schema](../docs/fitt-plan-v1.schema.json) are the public conversion contract.
+[guide](../app/src/main/assets/import-guide.md), [template](../app/src/main/assets/fitt-plan-example.json), and
+[JSON Schema](../app/src/main/assets/fitt-plan-v1.schema.json) are the public conversion contract.
 The same files are packaged as app assets and loaded by tests, avoiding divergent
 guide/template copies. The importer is strict about object shapes, numeric versus
 string types, duplicate keys, IDs, source food references, and supported units.
@@ -183,4 +183,4 @@ the ViewModel and storage preview. Plan previews preserve the current reminder
 time even with use-imported, since a plan has no reminder-setting field. Unknown
 root fields such as workout history are rejected. A plan
 cannot be smuggled through a backup ZIP. Exporting the whole saved database later
-produces a normal v4 backup, including any plans and genuine logged history.
+produces a normal v5 backup, including any plans and genuine logged history.
