@@ -89,7 +89,7 @@ fun PhotoGallery(model: ProgressViewModel) {
                 item {
                     FittCard {
                         Text("Your private timeline", style = MaterialTheme.typography.titleLarge)
-                        Text("Photos stay in Fitt's private app storage. Choose an image from your phone or take a new one. ZIP backups include photos by default.")
+                        Text("Private on this device. Include photos in your ZIP backups.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button({ localMessage = null; picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, enabled = !state.busy, modifier = Modifier.weight(1f).testTag("addPhoto")) { Text("Choose photo") }
                             OutlinedButton({

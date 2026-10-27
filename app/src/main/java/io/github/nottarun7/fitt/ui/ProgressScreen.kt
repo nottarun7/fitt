@@ -16,6 +16,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -37,9 +45,8 @@ fun ProgressScreen(model: ProgressViewModel, onBackup: () -> Unit) {
             listOf("Workouts", "Nutrition", "Photos").forEachIndexed { index, label -> Tab(tab == index, { tab = index }, text = { Text(label) }, modifier = Modifier.testTag("progress-$label")) }
         }
         if (tab == 2) PhotoGallery(model) else {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(7, 30, 90).forEach { count -> FilterChip(state.days == count, { model.range(count) }, label = { Text("$count days") }) }
-            }
+            FittSegmentedControl(listOf("7 days", "30 days", "90 days"), listOf(7, 30, 90).indexOf(state.days),
+                { model.range(listOf(7, 30, 90)[it]) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             state.error?.let { Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
             val report = state.report
             if (report == null && state.error == null) CircularProgressIndicator(Modifier.padding(24.dp))
@@ -67,7 +74,7 @@ fun ProgressCharts(report: ProgressReport, nutrition: Boolean) {
                         Text("Daily nutrition", style = MaterialTheme.typography.titleLarge)
                         MetricChips(names, nutritionMetric) { nutritionMetric = it }
                         val logged = values.filterNotNull()
-                        Text("${chartNumber(logged.sum() / logged.size)} $unit average · ${countLabel(report.loggedNutritionDays, "logged day")}", fontWeight = FontWeight.Bold)
+                        Text("${chartNumber(logged.sum() / logged.size)} $unit average · ${countLabel(report.loggedNutritionDays, "logged day")}", style = MaterialTheme.typography.titleMedium)
                         Text("Averages include logged days only. A partially logged day may understate your intake. Gaps mean no meals were logged.", style = MaterialTheme.typography.bodySmall)
                         TrendChart(names[nutritionMetric], dates, values, unit)
                     }
@@ -126,18 +133,20 @@ fun TrendChart(title: String, dates: List<LocalDate>, values: List<Double?>, uni
     val max = (safe.filterNotNull().maxOrNull() ?: 0.0).coerceAtLeast(1.0)
     val color = MaterialTheme.colorScheme.primary
     val grid = MaterialTheme.colorScheme.outlineVariant
-    Text(title, fontWeight = FontWeight.SemiBold)
-    Text("0–${chartNumber(max)} $unit", style = MaterialTheme.typography.labelMedium)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+        Text("0–${chartNumber(max)} $unit", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     Canvas(Modifier.fillMaxWidth().height(150.dp).semantics { contentDescription = "$title chart in $unit. Use View values for daily readings." }.testTag("chart-$title")) {
         val base = size.height - 8.dp.toPx(); val top = 8.dp.toPx(); val height = base - top
-        for (line in 0..3) { val y = base - height * line / 3; drawLine(grid, Offset(0f, y), Offset(size.width, y), 1.dp.toPx()) }
+        for (line in 0..3) { val y = base - height * line / 3; drawLine(grid.copy(alpha = .65f), Offset(0f, y), Offset(size.width, y), .75.dp.toPx()) }
         val step = size.width / dates.size.coerceAtLeast(1)
         var previous: Offset? = null
         safe.forEachIndexed { index, value ->
             if (value == null) previous = null else {
                 val point = Offset(step * (index + .5f), base - (value / max).toFloat() * height)
-                if (bars) drawRect(color, Offset(point.x - step * .32f, point.y), Size(step * .64f, base - point.y))
-                else { previous?.let { drawLine(color, it, point, 2.5.dp.toPx()) }; drawCircle(color, if (dates.size > 30) 2.dp.toPx() else 3.dp.toPx(), point); previous = point }
+                if (bars) drawRoundRect(color, Offset(point.x - step * .28f, point.y), Size(step * .56f, base - point.y), androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
+                else { previous?.let { drawLine(color, it, point, 2.5.dp.toPx(), cap = StrokeCap.Round) }; drawCircle(color, if (dates.size > 30) 2.dp.toPx() else 3.dp.toPx(), point); previous = point }
             }
         }
     }
@@ -150,6 +159,23 @@ fun TrendChart(title: String, dates: List<LocalDate>, values: List<Double?>, uni
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(dates[index].toString(), style = MaterialTheme.typography.bodySmall)
                 Text(safe[index]?.let { "${chartNumber(it)} $unit" } ?: "No log", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FittSegmentedControl(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    Surface(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceContainer) {
+        Row(Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            labels.forEachIndexed { index, label ->
+                val color by animateColorAsState(if (index == selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                    tween(140), label = "Range selection")
+                Surface(Modifier.weight(1f).selectable(index == selected, role = Role.RadioButton, onClick = { onSelect(index) }), shape = RoundedCornerShape(8.dp), color = color) {
+                    Box(Modifier.heightIn(min = 48.dp).padding(horizontal = 4.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+                        Text(label, style = MaterialTheme.typography.labelLarge, color = if (index == selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         }
     }

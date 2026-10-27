@@ -2,6 +2,7 @@ package io.github.nottarun7.fitt.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -30,7 +31,7 @@ fun TrainScreen(state: WorkoutOverview, busy: Boolean, onNew: () -> Unit,
                 onStart: (String?) -> Unit, onResume: () -> Unit, onBackup: () -> Unit, onSettings: () -> Unit) {
     var deleting by remember { mutableStateOf<RoutineWithExercises?>(null) }
     Column {
-        PageHeader("Fitt", "YOUR WORKOUTS, YOUR PACE", action = { Row {
+        PageHeader("Fitt", "Your training log", action = { Row {
             TextButton(onBackup, enabled = !busy) { Text("Backups") }
             IconButton(onSettings, enabled = !busy) { Icon(Icons.Default.Settings, "Settings") }
         } })
@@ -39,42 +40,52 @@ fun TrainScreen(state: WorkoutOverview, busy: Boolean, onNew: () -> Unit,
             if (state.error != null) item { EmptyMessage("Storage unavailable", state.error) }
             if (!state.loading && state.error == null) {
                 item {
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                        shape = RoundedCornerShape(24.dp)) {
-                        Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        border = BorderStroke(1.dp, if (state.active != null) MaterialTheme.colorScheme.primary.copy(alpha = .5f) else MaterialTheme.colorScheme.outlineVariant),
+                        shape = MaterialTheme.shapes.large) {
+                        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             if (state.active != null) {
-                                Text("WORKOUT IN PROGRESS", style = MaterialTheme.typography.labelMedium)
-                                Text(state.active.session.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                Text("Active session", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                Text(state.active.session.name, style = MaterialTheme.typography.headlineSmall)
                                 Text("${countLabel(state.active.setCount, "set")} logged · started ${formatDate(state.active.session.startedAt)}")
-                                Button(onResume, Modifier.fillMaxWidth().testTag("resumeWorkout")) { Text("Resume workout") }
-                                Text("Finish or discard this workout before starting another.", style = MaterialTheme.typography.bodySmall)
+                                Button(onResume, Modifier.fillMaxWidth().heightIn(min = 50.dp).testTag("resumeWorkout"), shape = MaterialTheme.shapes.small) { Text("Resume workout") }
+                                Text("Your session is saved. Continue where you left off.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             } else {
-                                Text("READY WHEN YOU ARE", style = MaterialTheme.typography.labelMedium)
-                                Text("Build your next\nstronger day.", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                                Text("Start from a routine, or build a workout as you go.")
-                                Button({ onStart(null) }, Modifier.fillMaxWidth().testTag("freestyleWorkout"), enabled = !busy) { Text("Start freestyle workout") }
+                                Text("Start a workout", style = MaterialTheme.typography.headlineMedium)
+                                Text("Use a routine below, or build a session as you train.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Button({ onStart(null) }, Modifier.fillMaxWidth().heightIn(min = 50.dp).testTag("freestyleWorkout"), shape = MaterialTheme.shapes.small, enabled = !busy) {
+                                    Icon(FittIcons.Training, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)); Text("Start freestyle workout")
+                                }
                             }
                         }
                     }
                 }
                 item {
-                    Text("${countLabel(state.history.size, "workout")} completed  ·  ${countLabel(state.history.sumOf { it.setCount }, "set")} logged",
-                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(state.history.size.toString(), style = MaterialTheme.typography.headlineMedium)
+                            Text("Workouts completed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(state.history.sumOf { it.setCount }.toString(), style = MaterialTheme.typography.headlineMedium)
+                            Text("Sets logged", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Your routines", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("Your routines", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                         TextButton(onNew, Modifier.testTag("newRoutine"), enabled = !busy) { Icon(Icons.Default.Add, null); Text("New routine") }
                     }
                 }
                 if (state.routines.isEmpty()) item {
-                    EmptyMessage("A routine that fits you", "Choose exercises, set your targets, and arrange them in the order you like. Start with New routine.")
+                    EmptyMessage("No routines yet", "Create a routine with your exercises and targets, then reuse it each session.")
                 }
                 items(state.routines, key = { it.routine.id }) { routine ->
                     FittCard(Modifier.testTag("routine-${routine.routine.id}")) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(routine.routine.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                                Text(routine.routine.name, style = MaterialTheme.typography.titleMedium)
                                 Text("${countLabel(routine.exercises.size, "exercise")} · ${routine.exercises.sumOf { it.targetSets }} planned sets",
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -83,9 +94,9 @@ fun TrainScreen(state: WorkoutOverview, busy: Boolean, onNew: () -> Unit,
                         if (routine.exercises.isNotEmpty()) Text(routine.orderedExercises.take(3).joinToString("  /  ") { it.name },
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            OutlinedButton({ onEdit(routine) }, Modifier.weight(1f), enabled = !busy) { Text("Edit routine") }
+                            OutlinedButton({ onEdit(routine) }, Modifier.weight(1f), shape = MaterialTheme.shapes.small, enabled = !busy) { Text("Edit routine") }
                             Button({ onStart(routine.routine.id) }, Modifier.weight(1f).testTag("start-${routine.routine.id}"),
-                                enabled = !busy && state.active == null && routine.exercises.isNotEmpty()) { Text("Start workout") }
+                                shape = MaterialTheme.shapes.small, enabled = !busy && state.active == null && routine.exercises.isNotEmpty()) { Text("Start workout") }
                         }
                         if (routine.exercises.isEmpty()) Text("Add an exercise to start this routine.", style = MaterialTheme.typography.bodySmall)
                     }

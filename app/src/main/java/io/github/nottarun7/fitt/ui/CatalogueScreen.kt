@@ -39,7 +39,7 @@ fun CatalogueScreen(onChoose: ((ExerciseChoice) -> Unit)? = null, onDismiss: (()
     val keyboard = LocalSoftwareKeyboardController.current
     Column(Modifier.fillMaxSize()) {
         PageHeader(if (onChoose != null) "Choose an exercise" else "Exercise library",
-            "${ExerciseCatalogue.all.size} movements · available offline", onBack = onDismiss)
+            "${ExerciseCatalogue.all.size} movements, always available offline", onBack = onDismiss)
         Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().testTag("exerciseSearch"),
                 placeholder = { Text("Search exercise, muscle, or equipment") }, singleLine = true,
@@ -60,24 +60,25 @@ fun CatalogueScreen(onChoose: ((ExerciseChoice) -> Unit)? = null, onDismiss: (()
                 }
             }
         }
-        LazyColumn(Modifier.weight(1f).testTag("catalogueList"), contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(Modifier.weight(1f).testTag("catalogueList"), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
             if (matches.isEmpty()) item { EmptyMessage("No matches", "Try a different search or reset the filters. You can also add a custom exercise to a routine or workout.") }
             items(matches, key = { it.id }) { entry ->
-                FittCard(Modifier.clickable(enabled = enabled) {
+                Column(Modifier.fillMaxWidth().clickable(enabled = enabled) {
                     focus.clearFocus(); keyboard?.hide(); selectedId = entry.id
-                }.testTag("exercise-${entry.id}")) {
+                }.testTag("exercise-${entry.id}").padding(horizontal = 4.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(entry.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(entry.muscles, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        if (entry.metric == TrackingMetric.SECONDS) Text("HOLD", style = MaterialTheme.typography.labelSmall,
+                        if (entry.metric == TrackingMetric.SECONDS) Text("Timed", style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary)
+                        Icon(FittIcons.Forward, null, Modifier.padding(start = 8.dp).size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Text(entry.family?.let { "$it · step ${entry.step} · ${entry.equipment.label}" } ?: entry.equipment.label,
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
     }

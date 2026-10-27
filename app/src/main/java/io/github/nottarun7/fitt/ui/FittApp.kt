@@ -10,6 +10,9 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
@@ -23,10 +26,11 @@ import io.github.nottarun7.fitt.health.*
 fun FittApp(model: WorkoutViewModel, openNutrition: Boolean = false, onNutritionOpened: () -> Unit = {}) {
     val application = LocalContext.current.applicationContext as FittApplication
     val updates: io.github.nottarun7.fitt.updates.UpdateViewModel = viewModel(factory = io.github.nottarun7.fitt.updates.UpdateViewModel.factory(application))
-    UpdatePromptHost(updates, application.automaticUpdateChecksAllowed)
     val navigation = rememberNavController()
     val backStack by navigation.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
+    UpdatePromptHost(updates, application.automaticUpdateChecksAllowed,
+        presentationAllowed = route != "workout" && WindowInsets.ime.getBottom(LocalDensity.current) == 0)
     val overview by model.overview.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle()
     val snackbars = remember { SnackbarHostState() }
@@ -39,21 +43,28 @@ fun FittApp(model: WorkoutViewModel, openNutrition: Boolean = false, onNutrition
         modifier = Modifier.fillMaxSize().imePadding(),
         snackbarHost = { SnackbarHost(snackbars) },
         bottomBar = {
-            if (route in roots) NavigationBar {
+            if (route in roots) Column {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                 roots.forEachIndexed { index, target ->
                     val label = listOf("Train", "Exercises", "History", "Nutrition", "Progress")[index]
-                    val icon = listOf(Icons.Default.Home, Icons.Default.Search, Icons.Default.DateRange, Icons.Default.Favorite, Icons.Default.Star)[index]
+                    val icon = listOf(FittIcons.Training, FittIcons.Exercises, FittIcons.History, FittIcons.Nutrition, FittIcons.Progress)[index]
                     NavigationBarItem(selected = route == target, onClick = {
                         navigation.navigate(target) {
                             popUpTo(navigation.graph.findStartDestination().id) { saveState = true }
                             launchSingleTop = true; restoreState = true
                         }
-                    }, icon = { Icon(icon, null) }, label = { Text(label) })
+                    }, icon = { Icon(icon, null) }, label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                        colors = NavigationBarItemDefaults.colors(selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary, indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant, unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant))
                 }
+            }
             }
         },
     ) { insets ->
-        NavHost(navigation, "train", Modifier.padding(insets)) {
+        Box(Modifier.fillMaxSize().padding(insets), contentAlignment = Alignment.TopCenter) {
+        NavHost(navigation, "train", Modifier.widthIn(max = 900.dp).fillMaxSize()) {
             composable("train") {
                 TrainScreen(overview, busy,
                     onNew = { model.beginEditor(null); navigation.navigate("routine/new") },
@@ -109,6 +120,7 @@ fun FittApp(model: WorkoutViewModel, openNutrition: Boolean = false, onNutrition
                 val session by flow.collectAsStateWithLifecycle(initialValue = null)
                 HistoryDetailScreen(session, onBack = { navigation.popBackStack() })
             }
+        }
         }
     }
 }

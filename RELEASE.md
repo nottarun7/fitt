@@ -25,12 +25,12 @@ and [versioning](https://developer.android.com/studio/publish/versioning).
 From a clean checkout, with your normal GitHub authentication:
 
 ```powershell
-python scripts/release.py prepare 0.1.1
+python scripts/release.py prepare 0.1.2
 git diff -- version.properties
 git add version.properties
-git commit -m "Release 0.1.1"
-git tag v0.1.1
-git push origin main v0.1.1
+git commit -m "Release 0.1.2"
+git tag v0.1.2
+git push origin main v0.1.2
 ```
 
 The prepare command raises versionCode automatically and requires a newer
@@ -40,6 +40,13 @@ signed APKs, independently checks their certificates/package/version/debug flags
 creates update.json and SHA256SUMS.txt, checks that versionCode increases, then
 publishes the release. Failed validation publishes nothing. Never reuse a tag or
 replace an existing release's APK. Advance the version for corrections.
+
+Version 0.1.1 uses versionCode 3. Its interface changes keep the application ID
+`io.github.nottarun7.fitt`, Room database v3, backup schema 5, private photo layout
+`filesDir/progress_photos/<sha256>.jpg` and both signing keys unchanged. No data
+migration, reset or deletion is part of that release. Keep these storage and
+signing invariants when making further interface-only updates, and verify an
+actual signed APK upgrade with a populated database and photo files before release.
 
 The main/PR workflow runs checks without signing secrets. Only the tag-release
 workflow gets signing material; pull requests do not receive it. Repository
@@ -78,6 +85,9 @@ Settings provides manual check, installed version, release notes and an automati
 check toggle. The prompt offers Update, Later (a day), and Skip version. Manual
 checks can show a skipped version again. Only a higher versionCode, compatible
 Android version and matching signing certificate produce a download prompt.
+Automatic prompts are deferred during an active workout or text entry so they
+do not interrupt logging. Dismissing the keyboard or leaving the workout does
+not discard saved draft input.
 
 The check sends an ordinary request to GitHub with the app version in User-Agent.
 GitHub/CDN providers can observe normal connection metadata such as IP address.

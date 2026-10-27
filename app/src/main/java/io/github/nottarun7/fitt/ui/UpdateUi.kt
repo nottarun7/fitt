@@ -19,13 +19,13 @@ import io.github.nottarun7.fitt.BuildConfig
 import io.github.nottarun7.fitt.updates.*
 
 @Composable
-fun UpdatePromptHost(model: UpdateViewModel, automaticAllowed: Boolean) {
+fun UpdatePromptHost(model: UpdateViewModel, automaticAllowed: Boolean, presentationAllowed: Boolean = true) {
     val state by model.state.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { if (automaticAllowed) model.check() }
     val update = state.available
     val context = LocalContext.current
     var error by remember { mutableStateOf<String?>(null) }
-    if (state.showPrompt && update != null) UpdatePrompt(update, onLater = model::later, onSkip = model::skip,
+    if (presentationAllowed && state.showPrompt && update != null) UpdatePrompt(update, onLater = model::later, onSkip = model::skip,
         onDownload = {
             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.downloadUrl))) }
                 .onSuccess { model.later() }.onFailure { error = "No browser is available. Open the GitHub Releases page on another device." }

@@ -34,6 +34,11 @@ Connect, and import plans converted by an external LLM. Progress includes workou
 and nutrition charts, a private photo timeline, optional phone-gallery copies,
 and photo-inclusive ZIP backups.
 
+Version 0.1.1 refreshes the native light/dark interface and keeps **Finish** out of
+the set-entry area. While typing, **Done** dismisses the keyboard; **Log set**
+records the set. Finishing still needs confirmation and warns about unlogged
+entries. See the [interface design notes and references](docs/ui-design.md).
+
 See [SETUP.md](SETUP.md) for Windows/CMD setup.
 
 - `app`: Kotlin and Jetpack Compose Android application (Android 8+).
