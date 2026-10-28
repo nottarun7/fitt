@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -64,7 +65,8 @@ fun CatalogueScreen(onChoose: ((ExerciseChoice) -> Unit)? = null, onDismiss: (()
             if (matches.isEmpty()) item { EmptyMessage("No matches", "Try a different search or reset the filters. You can also add a custom exercise to a routine or workout.") }
             items(matches, key = { it.id }) { entry ->
                 Column(Modifier.fillMaxWidth().clickable(enabled = enabled) {
-                    focus.clearFocus(); keyboard?.hide(); selectedId = entry.id
+                    focus.clearFocus(); keyboard?.hide()
+                    if (onChoose != null) onChoose(entry.choice()) else selectedId = entry.id
                 }.testTag("exercise-${entry.id}").padding(horizontal = 4.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -73,7 +75,11 @@ fun CatalogueScreen(onChoose: ((ExerciseChoice) -> Unit)? = null, onDismiss: (()
                         }
                         if (entry.metric == TrackingMetric.SECONDS) Text("Timed", style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary)
-                        Icon(FittIcons.Forward, null, Modifier.padding(start = 8.dp).size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (onChoose != null) IconButton({
+                            focus.clearFocus(); keyboard?.hide(); selectedId = entry.id
+                        }, enabled = enabled, modifier = Modifier.testTag("exerciseDetails-${entry.id}")) {
+                            Icon(Icons.Default.Info, "Details for ${entry.name}", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else Icon(FittIcons.Forward, null, Modifier.padding(start = 8.dp).size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Text(entry.family?.let { "$it · step ${entry.step} · ${entry.equipment.label}" } ?: entry.equipment.label,
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
@@ -84,7 +90,9 @@ fun CatalogueScreen(onChoose: ((ExerciseChoice) -> Unit)? = null, onDismiss: (()
     }
     ExerciseCatalogue.find(selectedId)?.let { entry ->
         ExerciseDetails(entry, onDismiss = { selectedId = null }, onSelectSibling = { selectedId = it },
-            onChoose = onChoose, enabled = enabled)
+            onChoose = onChoose?.let { choose -> { choice ->
+                focus.clearFocus(); keyboard?.hide(); selectedId = null; choose(choice)
+            } }, enabled = enabled)
     }
     if (custom) CustomExerciseDialog(query, onDismiss = { custom = false }, onChoose = {
         onChoose?.invoke(it); custom = false

@@ -25,15 +25,33 @@ class NutritionViewModel(private val repository: NutritionRepository, val remind
     val overview = repository.overview.catch { emit(NutritionOverview(loading = false, error = "Could not open your nutrition data. Reopen Fitt to retry.")) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), NutritionOverview())
     private val mutableForm: MutableStateFlow<NutritionForm?> = MutableStateFlow(saved.get<Bundle>("nutritionForm")?.toNutritionForm())
+    private var parentForm: NutritionForm? = saved.get<Bundle>("nutritionParentForm")?.toNutritionForm()
     val form: StateFlow<NutritionForm?> = mutableForm.asStateFlow()
+    val addingFoodToDraft: Boolean get() = parentForm != null
     private val mutableBusy = MutableStateFlow(false)
     val busy = mutableBusy.asStateFlow()
     private val mutableMessage = MutableStateFlow<String?>(null)
     val message = mutableMessage.asStateFlow()
+    private val mutableMessageIsError = MutableStateFlow(false)
+    val messageIsError = mutableMessageIsError.asStateFlow()
     private fun setForm(form: NutritionForm?) { mutableForm.value = form; saved["nutritionForm"] = form?.bundle() }
+    private fun setParent(form: NutritionForm?) { parentForm = form; saved["nutritionParentForm"] = form?.bundle() }
     fun dismissMessage() { mutableMessage.value = null }
     fun edit(change: (NutritionForm) -> NutritionForm) { if (!busy.value) form.value?.let { setForm(change(it).copy(dirty = true)) } }
-    fun closeEditor() { if (!busy.value) setForm(null) }
+    fun closeEditor() {
+        if (busy.value) return
+        val parent = parentForm
+        setParent(null)
+        setForm(parent)
+        dismissMessage()
+    }
+    fun createFoodForDraft(name: String = "") {
+        if (busy.value) return
+        val parent = form.value?.takeIf { it.kind == "meal" || it.kind == "schedule" } ?: return
+        setParent(parent)
+        setForm(NutritionForm("food", name = name.trim()))
+        dismissMessage()
+    }
     fun food(food: BackupFood? = null) = setForm(food?.let {
         NutritionForm("food", it.id, it.name, serving = it.servingLabel, calories = displayNumber(it.calories),
             protein = displayNumber(it.protein), carbs = displayNumber(it.carbs), fat = displayNumber(it.fat))
@@ -48,23 +66,34 @@ class NutritionViewModel(private val repository: NutritionRepository, val remind
     fun add(food: BackupFood) = edit { it.copy(items = it.items + PortionForm(food.portion(it.items.size))) }
     private fun task(success: String? = null, work: suspend () -> Unit) {
         if (busy.value) return
-        mutableBusy.value = true; mutableMessage.value = null
+        mutableBusy.value = true; mutableMessage.value = null; mutableMessageIsError.value = false
         viewModelScope.launch {
             try { withContext(Dispatchers.IO) { work() }; mutableMessage.value = success }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (invalid: IllegalArgumentException) { mutableMessage.value = invalid.message ?: "Check your entries." }
-            catch (_: Exception) { mutableMessage.value = "Could not save this change. Try again." }
+            catch (invalid: IllegalArgumentException) { mutableMessageIsError.value = true; mutableMessage.value = invalid.message ?: "Check your entries." }
+            catch (_: Exception) { mutableMessageIsError.value = true; mutableMessage.value = "Could not save this change. Try again." }
             finally { mutableBusy.value = false }
         }
     }
     fun save() {
         val draft = form.value ?: return
-        task("Saved.") {
+        val parent = parentForm
+        task(if (parent != null) "Food added." else "Saved.") {
             fun number(value: String, label: String): Double = value.toDoubleOrNull()?.takeIf { it.isFinite() }
                 ?: throw IllegalArgumentException("Enter a number for $label. Use 0 when the label lists none.")
             when (draft.kind) {
-                "food" -> repository.saveFood(BackupFood(draft.id, draft.name, draft.serving,
-                    number(draft.calories, "calories"), number(draft.protein, "protein"), number(draft.carbs, "carbohydrates"), number(draft.fat, "fat"), 0))
+                "food" -> {
+                    val food = BackupFood(draft.id, draft.name.trim(), draft.serving.trim(), number(draft.calories, "calories"),
+                        number(draft.protein, "protein"), number(draft.carbs, "carbohydrates"), number(draft.fat, "fat"), 0)
+                    repository.saveFood(food)
+                    if (parent != null) {
+                        withContext(Dispatchers.Main) {
+                            setParent(null)
+                            setForm(parent.copy(items = parent.items + PortionForm(food.portion(parent.items.size)), dirty = true))
+                        }
+                        return@task
+                    }
+                }
                 "meal", "schedule" -> {
                     val items = draft.items.mapIndexed { index, row -> row.snapshot.copy(position = index, quantity = number(row.quantity, "servings")) }
                     if (draft.kind == "meal") repository.saveMeal(BackupMeal(draft.id, draft.date, draft.name, draft.notes, 0, items))
@@ -88,7 +117,7 @@ class NutritionViewModel(private val repository: NutritionRepository, val remind
         reminders.refresh()
         viewModelScope.launch(Dispatchers.IO) { runCatching { reminders.sync() } }
     }
-    fun permissionDenied() { mutableMessage.value = "Reminders remain off. You can allow notifications in Android settings."; reminders.refresh() }
+    fun permissionDenied() { mutableMessageIsError.value = true; mutableMessage.value = "Reminders remain off. You can allow notifications in Android settings."; reminders.refresh() }
     companion object {
         fun factory(repository: NutritionRepository, reminders: NutritionReminders) = viewModelFactory {
             initializer { NutritionViewModel(repository, reminders, createSavedStateHandle()) }

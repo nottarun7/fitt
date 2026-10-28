@@ -10,21 +10,32 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -32,18 +43,40 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.nottarun7.fitt.interchange.*
 import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneOffset
 import java.time.format.TextStyle
+import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun NutritionScreen(model: NutritionViewModel) {
     val state by model.overview.collectAsStateWithLifecycle()
     val form by model.form.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle()
     val message by model.message.collectAsStateWithLifecycle()
+    val messageIsError by model.messageIsError.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(message, messageIsError) {
+        message?.let {
+            val displayedError = messageIsError
+            var completed = false
+            try {
+                snackbar.showSnackbar(it, actionLabel = if (displayedError) "Dismiss" else null,
+                    duration = if (displayedError) SnackbarDuration.Indefinite else SnackbarDuration.Short)
+                completed = true
+            } finally {
+                // Do not replay a stale success when this screen or activity returns.
+                if ((!displayedError || completed) && model.message.value == it && model.messageIsError.value == displayedError) model.dismissMessage()
+            }
+        }
+    }
     val reminder by model.reminders.status.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     val lifecycle = LocalLifecycleOwner.current
     DisposableEffect(lifecycle, model) {
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) model.refreshReminders() }
@@ -55,18 +88,19 @@ fun NutritionScreen(model: NutritionViewModel) {
     }
     var tab by rememberSaveable { mutableStateOf("Diary") }
     var date by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
+    var diaryCalendar by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var picking by rememberSaveable { mutableStateOf(false) }
     var leaving by rememberSaveable { mutableStateOf(false) }
     var deleteKind by rememberSaveable { mutableStateOf("") }
     var deleteId by rememberSaveable { mutableStateOf("") }
-    fun back() { if (!busy) { if (form?.dirty == true) leaving = true else model.closeEditor() } }
+    fun back() { if (!busy) { focus.clearFocus(); if (form?.dirty == true) leaving = true else model.closeEditor() } }
     BackHandler(form != null || busy) { if (form != null) back() }
     Column(Modifier.fillMaxSize()) {
         val draft = form
         if (draft != null) {
             PageHeader(when (draft.kind) { "food" -> "Food details"; "meal" -> "Meal details"; else -> "Diet schedule" }, onBack = ::back,
-                action = { FilledTonalButton({ focus.clearFocus(); model.save() }, enabled = !busy, modifier = Modifier.testTag("saveNutrition")) { Text("Save") } })
+                action = { FilledTonalButton({ focus.clearFocus(); model.save() }, enabled = !busy, modifier = Modifier.testTag("saveNutrition")) { Text(if (model.addingFoodToDraft) "Save & add" else "Save") } })
             NutritionEditor(draft, model, busy, onPick = { focus.clearFocus(); picking = true })
         } else {
             PageHeader("Nutrition", "Food, meals & weekly plans")
@@ -84,12 +118,19 @@ fun NutritionScreen(model: NutritionViewModel) {
                         val meals = state.meals.filter { it.date == date }
                         item {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                OutlinedTextField(date, { date = it }, Modifier.fillMaxWidth().testTag("diaryDate"), label = { Text("Date (YYYY-MM-DD)") },
-                                    singleLine = true, isError = day == null, supportingText = if (day == null) ({ Text("Use a valid date in YYYY-MM-DD format.") }) else null)
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton({ date = day!!.minusDays(1).toString() }, enabled = day != null) { Text("Previous") }
-                                    FilledTonalButton({ date = LocalDate.now().toString() }) { Text("Today") }
-                                    TextButton({ date = day!!.plusDays(1).toString() }, enabled = day != null) { Text("Next") }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton({ date = day!!.minusDays(1).toString() }, enabled = day != null && !busy, modifier = Modifier.testTag("diaryPrevious")) {
+                                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Previous day")
+                                    }
+                                    OutlinedButton({ diaryCalendar = true }, Modifier.weight(1f).testTag("diaryDate"), enabled = !busy, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)) {
+                                        Icon(Icons.Default.DateRange, null, Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(day?.format(DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault())) ?: "Choose date")
+                                    }
+                                    IconButton({ date = day!!.plusDays(1).toString() }, enabled = day != null && !busy, modifier = Modifier.testTag("diaryNext")) {
+                                        Icon(Icons.AutoMirrored.Filled.ArrowForward, "Next day")
+                                    }
+                                    TextButton({ date = LocalDate.now().toString() }, enabled = !busy && day != LocalDate.now(), modifier = Modifier.testTag("diaryToday")) { Text("Today") }
                                 }
                                 FittCard {
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -117,7 +158,7 @@ fun NutritionScreen(model: NutritionViewModel) {
                             }
                         }
                         item { NutritionSectionTitle("Logged meals", meals.size) }
-                        if (meals.isEmpty()) item { Text("No meals logged for this date. Add foods to your library, then build a meal.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        if (meals.isEmpty()) item { Text("No meals logged for this date. Log a meal to add foods or create a new one.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         items(meals, key = { "meal:${it.id}" }) { meal ->
                             FittCard(Modifier.testTag("meal-${meal.id}")) {
                                 Text(meal.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -190,7 +231,7 @@ fun NutritionScreen(model: NutritionViewModel) {
                             Text("Daily nutrition reminder", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text("A daily nudge to log food or review your plan. Android may delay it to save battery.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             OutlinedTextField(time, { time = it }, Modifier.fillMaxWidth().testTag("reminderTime"), label = { Text("Local time (HH:MM, 24-hour)") }, singleLine = true)
-                            OutlinedButton({ model.reminderTime(time) }, enabled = !busy, modifier = Modifier.fillMaxWidth().testTag("saveReminderTime")) { Text("Save reminder time") }
+                            OutlinedButton({ focus.clearFocus(); keyboard?.hide(); model.reminderTime(time) }, enabled = !busy, modifier = Modifier.fillMaxWidth().testTag("saveReminderTime")) { Text("Save reminder time") }
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Enable daily reminder", Modifier.weight(1f))
@@ -211,22 +252,34 @@ fun NutritionScreen(model: NutritionViewModel) {
             }
         }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (message != null) Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(message!!, Modifier.weight(1f).testTag("nutritionMessage"), style = MaterialTheme.typography.bodySmall)
-                TextButton(model::dismissMessage) { Text("Dismiss") }
-            }
+        SnackbarHost(snackbar, Modifier.testTag("nutritionMessage"))
+    }
+    if (diaryCalendar) {
+        val initial = runCatching { LocalDate.parse(date) }.getOrNull()?.takeIf { it.year in 1..9999 } ?: LocalDate.now()
+        val picker = rememberDatePickerState(initialSelectedDateMillis = initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+            yearRange = minOf(1900, initial.year)..maxOf(2100, initial.year))
+        DatePickerDialog(onDismissRequest = { diaryCalendar = false }, modifier = Modifier.testTag("diaryCalendar"),
+            confirmButton = { TextButton({
+                picker.selectedDateMillis?.let { date = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString() }
+                diaryCalendar = false
+            }, enabled = picker.selectedDateMillis != null, modifier = Modifier.testTag("confirmDiaryDate")) { Text("Use date") } },
+            dismissButton = { TextButton({ diaryCalendar = false }, Modifier.testTag("cancelDiaryDate")) { Text("Cancel") } }) {
+            DatePicker(picker, modifier = Modifier.verticalScroll(rememberScrollState()))
         }
     }
     if (picking && form != null) {
         var search by rememberSaveable { mutableStateOf("") }
+        val found = state.foods.filter { it.name.contains(search, ignoreCase = true) }
         AlertDialog(onDismissRequest = { picking = false }, title = { Text("Add a food") }, text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), label = { Text("Search foods") }, singleLine = true)
-                if (state.foods.isEmpty()) Text("Create a custom food in the Foods tab first.", style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth().testTag("foodPickerSearch"), label = { Text("Search foods") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
+                    trailingIcon = if (search.isNotEmpty()) ({ TextButton({ search = "" }, Modifier.testTag("clearFoodSearch")) { Text("Clear") } }) else null)
+                if (found.isEmpty()) Text(if (state.foods.isEmpty()) "No foods saved yet. Create one to add it to this meal or plan."
+                    else "No foods found. Clear your search or create this food.", Modifier.testTag("foodPickerEmpty"), style = MaterialTheme.typography.bodyMedium)
                 LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                    items(state.foods.filter { it.name.contains(search, ignoreCase = true) }, key = { it.id }) { food ->
-                        TextButton({ model.add(food); picking = false }, Modifier.fillMaxWidth().testTag("pickFood-${food.id}"), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)) {
+                    items(found, key = { it.id }) { food ->
+                        TextButton({ focus.clearFocus(); model.add(food); picking = false }, Modifier.fillMaxWidth().testTag("pickFood-${food.id}"), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(food.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                                 Text(food.servingLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -235,7 +288,9 @@ fun NutritionScreen(model: NutritionViewModel) {
                     }
                 }
             }
-        }, confirmButton = { TextButton({ picking = false }) { Text("Done") } })
+        }, confirmButton = { FilledTonalButton({ focus.clearFocus(); picking = false; model.createFoodForDraft(search) },
+            Modifier.testTag("createFoodFromPicker"), enabled = !busy) { Text("Create food") } },
+            dismissButton = { TextButton({ focus.clearFocus(); picking = false }) { Text("Done") } })
     }
     if (leaving) AlertDialog(onDismissRequest = { leaving = false }, title = { Text("Discard unsaved changes?") },
         text = { Text("Your saved meals and foods will stay as they are.") },
@@ -251,10 +306,29 @@ fun NutritionScreen(model: NutritionViewModel) {
 
 @Composable
 private fun ColumnScope.NutritionEditor(form: NutritionForm, model: NutritionViewModel, busy: Boolean, onPick: () -> Unit) {
-    LazyColumn(Modifier.weight(1f).testTag("nutritionEditor"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val focus = LocalFocusManager.current
+    val scope = rememberCoroutineScope()
+    val listState = key(form.id) { rememberLazyListState() }
+    val fields = when (form.kind) {
+        "food" -> listOf("nutritionName" to 0, "foodServing" to 2, "foodCalories" to 3, "foodProtein" to 4, "foodCarbs" to 5, "foodFat" to 6)
+        "meal" -> listOf("nutritionName" to 0, "nutritionNotes" to 2) + form.items.mapIndexed { index, row -> "servings-${row.snapshot.id}" to index + 4 }
+        else -> listOf("nutritionName" to 0, "scheduleTime" to 1, "nutritionNotes" to 3) + form.items.mapIndexed { index, row -> "servings-${row.snapshot.id}" to index + 5 }
+    }
+    val requesters = remember(form.id, fields.map { it.first }) { fields.associate { it.first to FocusRequester() } }
+    fun options(tag: String, decimal: Boolean = false) = KeyboardOptions(keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Text,
+        imeAction = if (fields.last().first == tag) ImeAction.Done else ImeAction.Next)
+    fun actions(tag: String) = KeyboardActions(onDone = { focus.clearFocus() }, onNext = {
+        val next = fields.getOrNull(fields.indexOfFirst { it.first == tag } + 1)
+        if (next == null) focus.clearFocus() else scope.launch {
+            listState.animateScrollToItem(next.second)
+            withFrameNanos { }
+            requesters[next.first]?.requestFocus()
+        }
+    })
+    LazyColumn(Modifier.weight(1f).testTag("nutritionEditor"), state = listState, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         fun field(tag: String, label: String, value: String, decimal: Boolean = false, update: (NutritionForm, String) -> NutritionForm) = item {
-            OutlinedTextField(value, { text -> model.edit { update(it, text) } }, Modifier.fillMaxWidth().testTag(tag), label = { Text(label) },
-                enabled = !busy, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Text))
+            OutlinedTextField(value, { text -> model.edit { update(it, text) } }, Modifier.fillMaxWidth().testTag(tag).focusRequester(requesters.getValue(tag)), label = { Text(label) },
+                enabled = !busy, singleLine = true, keyboardOptions = options(tag, decimal), keyboardActions = actions(tag))
         }
         field("nutritionName", "Name", form.name) { d, v -> d.copy(name = v) }
         if (form.kind == "food") {
@@ -266,7 +340,8 @@ private fun ColumnScope.NutritionEditor(form: NutritionForm, model: NutritionVie
             field("foodCarbs", "Carbohydrates (g)", form.carbs, true) { d, v -> d.copy(carbs = v) }
             field("foodFat", "Fat (g)", form.fat, true) { d, v -> d.copy(fat = v) }
         } else {
-            if (form.kind == "meal") field("mealDate", "Date (YYYY-MM-DD)", form.date) { d, v -> d.copy(date = v) }
+            if (form.kind == "meal") item { DateInputField(form.date, { value -> model.edit { it.copy(date = value) } },
+                Modifier.fillMaxWidth().testTag("mealDate"), enabled = !busy) }
             else {
                 field("scheduleTime", "Local time (HH:MM, optional)", form.time) { d, v -> d.copy(time = v) }
                 item {
@@ -297,15 +372,33 @@ private fun ColumnScope.NutritionEditor(form: NutritionForm, model: NutritionVie
                     Text("One serving: ${row.snapshot.servingLabel}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedTextField(row.quantity, { quantity -> model.edit { draft -> draft.copy(items = draft.items.map {
                         if (it.snapshot.id == row.snapshot.id) it.copy(quantity = quantity) else it
-                    }) } }, Modifier.fillMaxWidth().testTag("servings-${row.snapshot.id}"), label = { Text("Servings") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), enabled = !busy)
+                    }) } }, Modifier.fillMaxWidth().testTag("servings-${row.snapshot.id}").focusRequester(requesters.getValue("servings-${row.snapshot.id}")), label = { Text("Servings") }, singleLine = true,
+                        keyboardOptions = options("servings-${row.snapshot.id}", true), keyboardActions = actions("servings-${row.snapshot.id}"), enabled = !busy)
                     TextButton({ model.edit { d -> d.copy(items = d.items.filterNot { it.snapshot.id == row.snapshot.id }) } }, enabled = !busy) { Text("Remove portion") }
                 }
+            }
+            if (form.items.isNotEmpty()) item {
+                val total = form.previewTotals()
+                if (total != null) Column(Modifier.fillMaxWidth().testTag("nutritionDraftTotals"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(if (form.kind == "meal") "Meal total" else "Planned meal total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${nutritionNumber(total.calories)} kcal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Text("Protein ${nutritionNumber(total.protein)} g · Carbs ${nutritionNumber(total.carbs)} g · Fat ${nutritionNumber(total.fat)} g",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else Text("Enter valid servings to preview the total.", Modifier.testTag("nutritionDraftTotalsInvalid"),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item { OutlinedButton(onPick, Modifier.fillMaxWidth().testTag("addMealFood"), enabled = !busy) { Text("Add food") } }
             item { Text("These portions keep their saved nutrition values when the food library changes.", style = MaterialTheme.typography.bodySmall) }
         }
     }
+}
+
+private fun NutritionForm.previewTotals(): NutritionTotals? {
+    val portions = items.map { row ->
+        val quantity = row.quantity.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 && it <= 10_000.0 } ?: return null
+        row.snapshot.copy(quantity = quantity)
+    }
+    return portions.nutritionTotals().takeIf { listOf(it.calories, it.protein, it.carbs, it.fat).all { number -> number.isFinite() } }
 }
 
 @Composable private fun Totals(total: NutritionTotals, prominent: Boolean = false) {

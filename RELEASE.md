@@ -8,7 +8,7 @@ Finish validation, update `.github/release-notes.md` and commit app changes firs
 Start from a clean checkout and choose a newer `major.minor.patch` version:
 
 ```powershell
-python scripts/release.py prepare 0.1.2
+python scripts/release.py prepare 0.1.3
 git diff -- version.properties
 ```
 
@@ -17,9 +17,9 @@ build and upgrade checks below before publishing, then commit and tag:
 
 ```powershell
 git add version.properties
-git commit -m "Release 0.1.2"
-git tag v0.1.2
-git push origin main v0.1.2
+git commit -m "Release 0.1.3"
+git tag v0.1.3
+git push origin main v0.1.3
 ```
 
 The tag must match `version.properties`. Every release needs a higher versionCode.

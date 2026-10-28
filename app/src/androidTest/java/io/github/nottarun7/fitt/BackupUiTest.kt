@@ -18,6 +18,23 @@ class BackupUiTest {
         listOf(BackupWorkout("history", "Existing history", null, 0, 1, emptyList())))
     private val incoming = BackupDocument(1, listOf(BackupRoutine("r", "Imported routine", 2, emptyList())), emptyList())
 
+    @Test fun zipIsTheDefaultAndOtherFormatsStayAvailable() {
+        val exports = mutableListOf<BackupFileFormat>()
+        val state = mutableStateOf(BackupUiState())
+        ui.setContent { FittTheme { BackupContent(state.value, {}, exports::add, {}, {}, {}) } }
+        ui.onNodeWithTag("export-JSON").assertDoesNotExist()
+        ui.onNodeWithTag("export-CSV").assertDoesNotExist()
+        ui.onNodeWithTag("export-ZIP").performClick()
+        ui.onNodeWithTag("otherExportFormats").performClick()
+        ui.onNodeWithTag("export-JSON").performClick()
+        ui.onNodeWithTag("export-CSV").performClick()
+        assertEquals(listOf(BackupFileFormat.ZIP, BackupFileFormat.JSON, BackupFileFormat.CSV), exports)
+        ui.runOnIdle { state.value = state.value.copy(busy = true) }
+        ui.onNodeWithTag("export-ZIP").assertIsNotEnabled()
+        ui.onNodeWithTag("export-JSON").assertIsNotEnabled()
+        ui.onNodeWithTag("includePhotos").assertIsNotEnabled()
+    }
+
     @Test fun planImportsOnlyOfferMergeAndKeepCompletedHistoryIntact() {
         val plan = PlanJson.decode("""{"format":"fitt.plan","schemaVersion":1,"sourceId":"test-plan","routines":[{"id":"r","name":"Plan routine","exercises":[{"id":"x","name":"Push up","metric":"REPS","sets":3,"target":8}]}]}""")
         val preview = BackupPlanner.plan(current, plan.document)

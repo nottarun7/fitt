@@ -50,6 +50,7 @@ fun BackupContent(state: BackupUiState, onBack: () -> Unit, onExport: (BackupFil
                   onPhotos: (Boolean) -> Unit = {}) {
     var confirm by rememberSaveable { mutableStateOf(false) }
     var showAll by rememberSaveable(state.sourceName) { mutableStateOf(false) }
+    var otherFormats by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = state.busy) { /* Complete the current atomic operation before leaving. */ }
     Column(Modifier.fillMaxSize()) {
         PageHeader("Backups & files", "Your data, wherever you choose", onBack = { if (!state.busy) onBack() })
@@ -57,19 +58,27 @@ fun BackupContent(state: BackupUiState, onBack: () -> Unit, onExport: (BackupFil
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item {
                 FittCard {
-                    Text("Export your data", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("Includes routines, workout history and unfinished input, custom foods, logged meals, diet schedules, and reminder time. Save editor changes before exporting.")
+                    Text("Save a backup", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("Keep your routines, workouts, unfinished input, nutrition and photos together. Save editor changes first.")
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(state.includePhotos, onPhotos, enabled = !state.busy, modifier = Modifier.testTag("includePhotos"))
                         Text("Include private photos in ZIP (${state.photoCount})")
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        BackupFileFormat.entries.forEach { format ->
+                    Button({ onExport(BackupFileFormat.ZIP) }, Modifier.fillMaxWidth().testTag("export-ZIP"), enabled = !state.busy) {
+                        Text("Save backup (ZIP)")
+                    }
+                    TextButton({ otherFormats = !otherFormats }, enabled = !state.busy, modifier = Modifier.testTag("otherExportFormats")) {
+                        Text(if (otherFormats) "Hide other formats" else "Other formats")
+                    }
+                    if (otherFormats) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(BackupFileFormat.JSON, BackupFileFormat.CSV).forEach { format ->
                             OutlinedButton({ onExport(format) }, Modifier.weight(1f).testTag("export-${format.name}"), enabled = !state.busy) { Text(format.name) }
                         }
+                        }
+                        Text("JSON and CSV contain data only. Restoring them preserves existing photos.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text("ZIP includes matching JSON and CSV files with checksums, plus your photos when selected. JSON/CSV are data only; their restore preserves existing photos.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Backups can contain personal photos and health data. Files are not password-protected. Save them somewhere private.", style = MaterialTheme.typography.bodySmall)
                     Text("Notification permission and reminder opt-in stay on this device.", style = MaterialTheme.typography.bodySmall)
                 }

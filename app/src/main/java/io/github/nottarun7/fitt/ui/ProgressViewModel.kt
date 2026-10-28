@@ -37,6 +37,7 @@ class ProgressViewModel(val app: FittApplication, private val saved: SavedStateH
     fun refresh() { refresh.value++ }
     fun guideSeen() { preferences.edit().putBoolean("guide", true).apply(); _photos.update { it.copy(guideSeen = true) } }
     fun copies(enabled: Boolean) { preferences.edit().putBoolean("copies", enabled).apply(); _photos.update { it.copy(galleryCopies = enabled) } }
+    fun clearPhotoMessage() { _photos.update { it.copy(message = null) } }
     private fun work(action: suspend () -> String) {
         if (_photos.value.busy) return
         _photos.update { it.copy(busy = true, message = null) }

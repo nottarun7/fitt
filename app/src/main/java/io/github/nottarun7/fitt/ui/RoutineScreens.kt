@@ -19,6 +19,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -43,17 +45,23 @@ fun TrainScreen(state: WorkoutOverview, busy: Boolean, onNew: () -> Unit,
                     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow,
                         border = BorderStroke(1.dp, if (state.active != null) MaterialTheme.colorScheme.primary.copy(alpha = .5f) else MaterialTheme.colorScheme.outlineVariant),
                         shape = MaterialTheme.shapes.large) {
-                        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(if (state.active == null && state.routines.isNotEmpty()) 12.dp else 20.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             if (state.active != null) {
                                 Text("Active session", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                                 Text(state.active.session.name, style = MaterialTheme.typography.headlineSmall)
                                 Text("${countLabel(state.active.setCount, "set")} logged · started ${formatDate(state.active.session.startedAt)}")
                                 Button(onResume, Modifier.fillMaxWidth().heightIn(min = 50.dp).testTag("resumeWorkout"), shape = MaterialTheme.shapes.small) { Text("Resume workout") }
                                 Text("Your session is saved. Continue where you left off.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            } else {
+                            } else if (state.routines.isEmpty()) {
                                 Text("Start a workout", style = MaterialTheme.typography.headlineMedium)
                                 Text("Use a routine below, or build a session as you train.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Button({ onStart(null) }, Modifier.fillMaxWidth().heightIn(min = 50.dp).testTag("freestyleWorkout"), shape = MaterialTheme.shapes.small, enabled = !busy) {
+                                    Icon(FittIcons.Training, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)); Text("Start freestyle workout")
+                                }
+                            } else {
+                                TextButton({ onStart(null) }, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("freestyleWorkout"),
+                                    shape = MaterialTheme.shapes.small, enabled = !busy) {
                                     Icon(FittIcons.Training, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)); Text("Start freestyle workout")
                                 }
                             }
@@ -116,6 +124,8 @@ fun TrainScreen(state: WorkoutOverview, busy: Boolean, onNew: () -> Unit,
 fun RoutineEditorScreen(editor: EditorState?, model: WorkoutViewModel, busy: Boolean, onBack: () -> Unit) {
     var picker by rememberSaveable { mutableStateOf(false) }
     var confirmLeave by rememberSaveable { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     val leave = { if (editor?.dirty == true) confirmLeave = true else { model.discardEditor(); onBack() } }
     BackHandler(onBack = leave)
     Column(Modifier.fillMaxSize()) {
@@ -164,7 +174,7 @@ fun RoutineEditorScreen(editor: EditorState?, model: WorkoutViewModel, busy: Boo
                     }
                 }
                 item {
-                    OutlinedButton({ picker = true }, Modifier.fillMaxWidth().testTag("addRoutineExercise"), enabled = !busy) {
+                    OutlinedButton({ focusManager.clearFocus(); keyboard?.hide(); picker = true }, Modifier.fillMaxWidth().testTag("addRoutineExercise"), enabled = !busy) {
                         Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add exercise")
                     }
                 }

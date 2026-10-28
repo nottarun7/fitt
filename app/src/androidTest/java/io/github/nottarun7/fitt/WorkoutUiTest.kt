@@ -2,6 +2,9 @@ package io.github.nottarun7.fitt
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
 import io.github.nottarun7.fitt.interchange.*
@@ -20,9 +23,32 @@ class WorkoutUiTest {
         ui.waitUntil(10_000) { ui.onAllNodesWithText("Backups").fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithText("Backups").performClick()
         ui.onNodeWithText("Backups & files").assertExists()
+        ui.onNodeWithTag("export-ZIP").assertExists()
+        ui.onNodeWithTag("otherExportFormats").performClick()
         ui.onNodeWithTag("export-JSON").assertExists()
         ui.onNodeWithTag("export-CSV").assertExists()
-        ui.onNodeWithTag("export-ZIP").assertExists()
+    }
+
+    @Test fun typingHidesMainNavigationAndDoneKeepsNutritionDraftUnsaved() {
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("mainNavigation").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("mainNavigation").assertIsDisplayed()
+        val app = ui.activity.application as FittApplication
+        val foodsBefore = runBlocking { app.database.nutrition().foods() }
+        ui.onNodeWithText("Nutrition", substring = false).performClick()
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("nutrition-Foods").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("nutrition-Foods").performClick()
+        ui.onNodeWithTag("newFood").performClick()
+        ui.onNodeWithTag("nutritionEditor").performScrollToNode(hasTestTag("foodFat"))
+        ui.onNodeWithTag("foodFat").performClick().performTextReplacement("10")
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("mainNavigation").fetchSemanticsNodes().isEmpty() }
+        ui.onNodeWithTag("mainNavigation").assertDoesNotExist()
+        ui.onNodeWithTag("foodFat").performImeAction()
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("mainNavigation").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("mainNavigation").assertIsDisplayed()
+        ui.onNodeWithTag("nutritionEditor").assertExists()
+        ui.onNodeWithTag("foodFat").assertTextContains("10")
+        ui.onNodeWithTag("foodFat").assertIsNotFocused()
+        assertEquals(foodsBefore, runBlocking { app.database.nutrition().foods() })
     }
 
     @Test fun importedPathAndReservedIdsRemainEditableAndHistoryCanOpen() {
@@ -74,7 +100,9 @@ class WorkoutUiTest {
         ui.onNodeWithTag("addRoutineExercise").performScrollTo().performClick()
         ui.onNodeWithTag("exerciseSearch").performTextInput("machine chest press")
         ui.onNodeWithTag("exercise-machine-chest-press").performClick()
-        ui.onNodeWithTag("chooseExercise").performClick()
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("exerciseSearch").fetchSemanticsNodes().isEmpty() }
+        ui.onNodeWithTag("routineName").assertIsNotFocused()
+        ui.onNodeWithTag("addRoutineExercise").assertIsDisplayed()
         ui.onNodeWithTag("saveRoutine").performClick()
         ui.waitUntil(10_000) { ui.onAllNodesWithTag("newRoutine").fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithTag("trainList").performScrollToNode(hasText("Start workout"))
@@ -107,6 +135,13 @@ class WorkoutUiTest {
     @Test fun catalogueSearchShowsTimedSkillsAndTheirProgressionFamilies() {
         ui.onNodeWithText("Exercises").performClick()
         ui.onNodeWithTag("exerciseSearch").performTextInput("frontlever")
+        ui.runOnUiThread {
+            WindowCompat.getInsetsController(ui.activity.window, ui.activity.window.decorView).hide(WindowInsetsCompat.Type.ime())
+        }
+        ui.waitUntil(10_000) {
+            ui.runOnIdle { ViewCompat.getRootWindowInsets(ui.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) != true }
+        }
+        ui.waitForIdle()
         ui.onNodeWithTag("catalogueList").performScrollToNode(hasTestTag("exercise-front-lever"))
         ui.onNodeWithTag("exercise-front-lever").performClick()
         ui.onNodeWithText("Front lever progressions").assertExists()

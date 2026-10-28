@@ -2,6 +2,8 @@ package io.github.nottarun7.fitt.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -79,7 +81,7 @@ fun WorkoutScreen(active: SessionWithExercises?, loading: Boolean, model: Workou
                 }
                 if (active.exercises.isEmpty()) item { EmptyMessage("Build this workout", "Add an exercise from the library or create your own. Your session is already saved for later.") }
                 item {
-                    OutlinedButton({ picker = true }, Modifier.fillMaxWidth().testTag("addSessionExercise"), enabled = !busy) {
+                    OutlinedButton({ focusManager.clearFocus(); keyboard?.hide(); picker = true }, Modifier.fillMaxWidth().testTag("addSessionExercise"), enabled = !busy) {
                         Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add exercise")
                     }
                 }
@@ -93,7 +95,7 @@ fun WorkoutScreen(active: SessionWithExercises?, loading: Boolean, model: Workou
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Your workout and logged sets will be kept in history. You can finish even if some targets are unfinished.")
-                if (active.exercises.any { it.draft.value.isNotBlank() || it.draft.weight.isNotBlank() }) {
+                if (active.exercises.any { it.hasUnloggedInput() }) {
                     Text("Unlogged entries will not be added. Choose Keep training and log the set first.",
                         fontWeight = FontWeight.Medium, modifier = Modifier.testTag("unloggedSetWarning"))
                 }
@@ -106,6 +108,16 @@ fun WorkoutScreen(active: SessionWithExercises?, loading: Boolean, model: Workou
         text = { Text("This removes this unfinished session and all of its sets. Your routine is kept.") },
         confirmButton = { TextButton({ model.discardWorkout(active.session.id) { discard = false; onBack() } }, enabled = !busy) { Text("Discard workout") } },
         dismissButton = { TextButton({ discard = false }, enabled = !busy) { Text("Keep training") } })
+}
+
+private fun SessionExerciseWithSets.hasUnloggedInput(): Boolean {
+    if (draft.value.isBlank() && draft.weight.isBlank()) return false
+    val input = SetInput(draft.value, draft.weight, draft.unit, draft.assistance)
+    val values = runCatching { input.validated() }.getOrNull() ?: return true
+    val latest = orderedSets.lastOrNull() ?: return true
+    // A logged set stays in the fields as the next set's starting values.
+    return values.first != latest.value || values.second != latest.weight ||
+        input.unit != latest.unit || input.assistance != latest.assistance
 }
 
 @Composable
@@ -121,6 +133,15 @@ private fun ActiveExerciseCard(row: SessionExerciseWithSets, number: Int, model:
     var showGuide by rememberSaveable { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
+    val entryBringIntoView = remember { BringIntoViewRequester() }
+    var entryFocused by remember { mutableStateOf(false) }
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    LaunchedEffect(entryFocused, imeBottom, error, input.assistance) {
+        if (entryFocused) {
+            withFrameNanos { }
+            entryBringIntoView.bringIntoView()
+        }
+    }
     DisposableEffect(exercise.id) {
         onDispose { onEditingChange("entry", false); onEditingChange("dialog", false) }
     }
@@ -144,18 +165,21 @@ private fun ActiveExerciseCard(row: SessionExerciseWithSets, number: Int, model:
             }
         }
         if (row.sets.isNotEmpty()) HorizontalDivider()
-        Column(Modifier.onFocusChanged { onEditingChange("entry", it.hasFocus) }.focusGroup()) {
+        Column(Modifier.bringIntoViewRequester(entryBringIntoView).onFocusChanged {
+            entryFocused = it.hasFocus
+            onEditingChange("entry", it.hasFocus)
+        }.focusGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SetEntryFields(input, {
                 input = it; error = null; model.saveDraft(exercise.id, it)
             }, exercise.metric, exercise.perSide, exercise.id, enabled = !busy, error = error)
+            Button({
+                val invalid = runCatching { input.validated() }.exceptionOrNull()
+                if (invalid != null) error = invalid.message else {
+                    focusManager.clearFocus(); keyboard?.hide()
+                    model.logSet(exercise.id, input)
+                }
+            }, Modifier.fillMaxWidth().testTag("logSet-${exercise.id}"), enabled = !busy) { Text("Log set") }
         }
-        Button({
-            val invalid = runCatching { input.validated() }.exceptionOrNull()
-            if (invalid != null) error = invalid.message else {
-                focusManager.clearFocus(); keyboard?.hide()
-                model.logSet(exercise.id, input)
-            }
-        }, Modifier.fillMaxWidth().testTag("logSet-${exercise.id}"), enabled = !busy) { Text("Log set") }
     }
     row.sets.find { it.id == editingId }?.let { set ->
         EditSetDialog(set, exercise, model, busy, onDismiss = { editingId = null })

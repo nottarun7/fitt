@@ -49,9 +49,17 @@ class WorkoutEntryUiTest {
         ui.onNodeWithTag("value-entry-exercise").performClick().performTextReplacement("12")
         ui.onNodeWithTag("finishWorkout").assertDoesNotExist()
         ui.onNodeWithContentDescription("Workout options").assertDoesNotExist()
-        ui.onNodeWithTag("weight-entry-exercise").performScrollTo().performClick().performTextReplacement("42.")
+        ui.onNodeWithTag("value-entry-exercise").performImeAction()
+        ui.onNodeWithTag("weight-entry-exercise").assertIsFocused().performTextReplacement("42.")
+        ui.waitUntil(10_000) {
+            val viewport = ui.onNodeWithTag("workoutList").getUnclippedBoundsInRoot()
+            val firstField = ui.onNodeWithTag("value-entry-exercise").getUnclippedBoundsInRoot()
+            val logButton = ui.onNodeWithTag("logSet-entry-exercise").getUnclippedBoundsInRoot()
+            firstField.top >= viewport.top && logButton.bottom <= viewport.bottom
+        }
         ui.onNodeWithTag("finishWorkout").assertDoesNotExist()
-        ui.onNodeWithTag("doneEnteringSet").performClick()
+        ui.onNodeWithTag("weight-entry-exercise").performImeAction()
+        ui.onNodeWithTag("weight-entry-exercise").assertIsNotFocused()
         ui.waitUntil(10_000) { ui.onAllNodes(hasTestTag("finishWorkout") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         val active = runBlocking { app.database.workouts().active()!! }
         assertEquals(1, active.setCount)
@@ -71,6 +79,62 @@ class WorkoutEntryUiTest {
         ui.onNodeWithTag("workoutList").performScrollToNode(hasTestTag("weight-entry-exercise"))
         ui.onNodeWithTag("weight-entry-exercise").assertTextContains("42.")
         assertNotNull(runBlocking { app.database.workouts().active() })
+        ui.onNodeWithTag("finishWorkout").performClick()
+        ui.onNodeWithTag("unloggedSetWarning").assertExists()
+        ui.onNodeWithText("Keep training").performClick()
+    }
+
+    @Test fun loggingASetKeepsRepeatValuesWithoutAnUnloggedWarning() {
+        openWorkout()
+        ui.onNodeWithTag("workoutList").performScrollToNode(hasTestTag("value-entry-exercise"))
+        ui.onNodeWithTag("value-entry-exercise").performClick().performTextReplacement("8")
+        ui.onNodeWithTag("value-entry-exercise").performImeAction()
+        ui.onNodeWithTag("weight-entry-exercise").assertIsFocused().performTextReplacement("30")
+        ui.onNodeWithTag("weight-entry-exercise").performImeAction()
+        ui.onNodeWithTag("logSet-entry-exercise").performScrollTo().performClick()
+        ui.waitUntil(10_000) { runBlocking { app.database.workouts().active()?.setCount == 2 } }
+        ui.waitUntil(10_000) { ui.onAllNodes(hasTestTag("finishWorkout") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("finishWorkout").performClick()
+        ui.onNodeWithTag("confirmFinishWorkout").assertExists()
+        ui.onNodeWithTag("unloggedSetWarning").assertDoesNotExist()
+        ui.onNodeWithText("Keep training").performClick()
+
+        // Equivalent numeric formatting is still the same retained prefill.
+        ui.onNodeWithTag("value-entry-exercise").performScrollTo().performClick().performTextReplacement("008")
+        ui.onNodeWithTag("value-entry-exercise").performImeAction()
+        ui.onNodeWithTag("weight-entry-exercise").performTextReplacement("30.00")
+        ui.onNodeWithTag("weight-entry-exercise").performImeAction()
+        ui.waitUntil(10_000) { ui.onAllNodes(hasTestTag("finishWorkout") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("finishWorkout").performClick()
+        ui.onNodeWithTag("unloggedSetWarning").assertDoesNotExist()
+        ui.onNodeWithText("Keep training").performClick()
+        val active = runBlocking { app.database.workouts().active()!! }
+        assertEquals(2, active.setCount)
+        assertEquals("008", active.orderedExercises.single().draft.value)
+        assertEquals("30.00", active.orderedExercises.single().draft.weight)
+        assertNull(active.session.completedAt)
+    }
+
+    @Test fun invalidDraftStillWarnsAndIsRetainedWhenFinishingIsCancelled() {
+        openWorkout()
+        ui.onNodeWithTag("workoutList").performScrollToNode(hasTestTag("value-entry-exercise"))
+        ui.onNodeWithTag("value-entry-exercise").performClick().performTextReplacement("8")
+        ui.onNodeWithTag("value-entry-exercise").performImeAction()
+        ui.onNodeWithTag("weight-entry-exercise").performTextReplacement(".")
+        ui.onNodeWithTag("weight-entry-exercise").performImeAction()
+        ui.waitUntil(10_000) { ui.onAllNodes(hasTestTag("finishWorkout") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("finishWorkout").performClick()
+        ui.onNodeWithTag("unloggedSetWarning").assertExists()
+        ui.onNodeWithText("Keep training").performClick()
+        ui.activityRule.scenario.recreate()
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("workoutList").fetchSemanticsNodes().isNotEmpty() }
+        val active = runBlocking { app.database.workouts().active()!! }
+        assertEquals(1, active.setCount)
+        assertEquals(".", active.orderedExercises.single().draft.weight)
+        assertNull(active.session.completedAt)
+        ui.onNodeWithTag("finishWorkout").performClick()
+        ui.onNodeWithTag("unloggedSetWarning").assertExists()
+        ui.onNodeWithText("Keep training").performClick()
     }
 
     @Test fun finishingOutsideEntryStillNeedsExplicitConfirmation() {

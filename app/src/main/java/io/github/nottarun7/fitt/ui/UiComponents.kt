@@ -3,16 +3,23 @@ package io.github.nottarun7.fitt.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.nottarun7.fitt.data.*
@@ -82,16 +89,21 @@ val SetInputSaver = listSaver<SetInput, Any>(
 @Composable
 fun SetEntryFields(input: SetInput, onChange: (SetInput) -> Unit, metric: String, perSide: Boolean,
                    tag: String, enabled: Boolean = true, error: String? = null) {
+    val loadFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(input.value, { onChange(input.copy(value = it)) },
                 Modifier.weight(1f).testTag("value-$tag"), label = { Text(metricLabel(metric, perSide)) },
-                singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { loadFocus.requestFocus() }),
                 enabled = enabled, isError = error != null, shape = RoundedCornerShape(12.dp))
             OutlinedTextField(input.weight, { onChange(input.copy(weight = it)) },
-                Modifier.weight(1f).testTag("weight-$tag"), label = { Text("Load (${input.unit.lowercase()})") },
+                Modifier.weight(1f).focusRequester(loadFocus).testTag("weight-$tag"), label = { Text("Load (${input.unit.lowercase()})") },
                 placeholder = { Text("Optional") }, singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), enabled = enabled,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); keyboard?.hide() }), enabled = enabled,
                 isError = error != null, shape = RoundedCornerShape(12.dp))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

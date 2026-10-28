@@ -37,11 +37,8 @@ fun ProgressScreen(model: ProgressViewModel, onBackup: () -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { model.refresh() }
     Column(Modifier.fillMaxSize()) {
-        PageHeader("Progress", "Patterns from your saved logs", action = { TextButton(onBackup) { Text("Backups") } })
-        PrimaryTabRow(tab) {
-            listOf("Workouts", "Nutrition", "Photos").forEachIndexed { index, label -> Tab(tab == index, { tab = index }, text = { Text(label) }, modifier = Modifier.testTag("progress-$label")) }
-        }
-        if (tab == 2) PhotoGallery(model) else {
+        if (tab == 2) PhotoGallery(model, overviewHeader = { ProgressHeader(tab, { tab = it }, onBackup) }) else {
+            ProgressHeader(tab, { tab = it }, onBackup)
             FittSegmentedControl(listOf("7 days", "30 days", "90 days"), listOf(7, 30, 90).indexOf(state.days),
                 { model.range(listOf(7, 30, 90)[it]) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             state.error?.let { Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
@@ -53,8 +50,19 @@ fun ProgressScreen(model: ProgressViewModel, onBackup: () -> Unit) {
 }
 
 @Composable
+private fun ProgressHeader(tab: Int, onTab: (Int) -> Unit, onBackup: () -> Unit) {
+    PageHeader("Progress", "Patterns from your saved logs", action = { TextButton(onBackup) { Text("Backups") } })
+    PrimaryTabRow(tab) {
+        listOf("Workouts", "Nutrition", "Photos").forEachIndexed { index, label ->
+            Tab(tab == index, { onTab(index) }, text = { Text(label) }, modifier = Modifier.testTag("progress-$label"))
+        }
+    }
+}
+
+@Composable
 fun ProgressCharts(report: ProgressReport, nutrition: Boolean) {
     var workoutMetric by rememberSaveable { mutableIntStateOf(0) }
+    var volumeHelp by rememberSaveable { mutableStateOf(false) }
     var nutritionMetric by rememberSaveable { mutableIntStateOf(0) }
     var exerciseKey by rememberSaveable { mutableStateOf<String?>(null) }
     var exerciseMenu by remember { mutableStateOf(false) }
@@ -82,13 +90,18 @@ fun ProgressCharts(report: ProgressReport, nutrition: Boolean) {
             else {
                 item {
                     FittCard {
-                        Text("${report.days.sumOf { it.workouts }} workouts · ${report.days.sumOf { it.sets }} sets", style = MaterialTheme.typography.titleLarge)
+                        Text("${countLabel(report.days.sumOf { it.workouts }, "workout")} · ${countLabel(report.days.sumOf { it.sets }, "set")}", style = MaterialTheme.typography.titleLarge)
                         MetricChips(listOf("Workouts", "Sets", "Volume"), workoutMetric) { workoutMetric = it }
                         val unit = listOf("workouts", "sets", "kg·reps")[workoutMetric]
                         val values = report.days.map { when (workoutMetric) { 0 -> it.workouts.toDouble(); 1 -> it.sets.toDouble(); else -> it.volumeKg } }
                         TrendChart("Daily ${listOf("workouts", "sets", "volume")[workoutMetric]}", dates, values, unit, bars = true)
-                        Text("Volume = reps × recorded added load, converted to kg. Bodyweight, assistance and timed sets add no volume. Per-side sets count once as logged. It is not a measure of total effort.", style = MaterialTheme.typography.bodySmall)
-                        if (report.overflowDays > 0) Text("Some volume values are too large to display safely.", color = MaterialTheme.colorScheme.error)
+                        if (workoutMetric == 2) {
+                            TextButton({ volumeHelp = !volumeHelp }, Modifier.testTag("volumeHelp")) {
+                                Text(if (volumeHelp) "Hide volume explanation" else "How volume is calculated")
+                            }
+                            if (volumeHelp) Text("Volume = reps × recorded added load, converted to kg. Bodyweight, assistance and timed sets add no volume. Per-side sets count once as logged. It is not a measure of total effort.", style = MaterialTheme.typography.bodySmall)
+                            if (report.overflowDays > 0) Text("Some volume values are too large to display safely.", color = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
                 if (report.exercises.isNotEmpty()) item {

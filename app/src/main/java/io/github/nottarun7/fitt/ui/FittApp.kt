@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
@@ -23,8 +24,10 @@ fun FittApp(model: WorkoutViewModel, openNutrition: Boolean = false, onNutrition
     val navigation = rememberNavController()
     val backStack by navigation.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val largeNavigationText = LocalDensity.current.fontScale >= 1.5f
     UpdatePromptHost(updates, application.automaticUpdateChecksAllowed,
-        presentationAllowed = route != "workout" && WindowInsets.ime.getBottom(LocalDensity.current) == 0)
+        presentationAllowed = route != "workout" && !imeVisible)
     val overview by model.overview.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle()
     val snackbars = remember { SnackbarHostState() }
@@ -37,9 +40,9 @@ fun FittApp(model: WorkoutViewModel, openNutrition: Boolean = false, onNutrition
         modifier = Modifier.fillMaxSize().imePadding(),
         snackbarHost = { SnackbarHost(snackbars) },
         bottomBar = {
-            if (route in roots) Column {
+            if (route in roots && !imeVisible) Column {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+                NavigationBar(modifier = Modifier.testTag("mainNavigation"), containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                 roots.forEachIndexed { index, target ->
                     val label = listOf("Train", "Exercises", "History", "Nutrition", "Progress")[index]
                     val icon = listOf(FittIcons.Training, FittIcons.Exercises, FittIcons.History, FittIcons.Nutrition, FittIcons.Progress)[index]
@@ -48,7 +51,8 @@ fun FittApp(model: WorkoutViewModel, openNutrition: Boolean = false, onNutrition
                             popUpTo(navigation.graph.findStartDestination().id) { saveState = true }
                             launchSingleTop = true; restoreState = true
                         }
-                    }, icon = { Icon(icon, null) }, label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                    }, icon = { Icon(icon, if (largeNavigationText) label else null) },
+                        label = if (largeNavigationText) null else ({ Text(label, style = MaterialTheme.typography.labelSmall) }),
                         colors = NavigationBarItemDefaults.colors(selectedIconColor = MaterialTheme.colorScheme.primary,
                             selectedTextColor = MaterialTheme.colorScheme.primary, indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant, unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant))

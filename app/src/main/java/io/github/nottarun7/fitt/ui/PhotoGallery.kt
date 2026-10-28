@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -37,7 +39,7 @@ import java.io.File
 import java.time.LocalDate
 
 @Composable
-fun PhotoGallery(model: ProgressViewModel) {
+fun PhotoGallery(model: ProgressViewModel, overviewHeader: @Composable () -> Unit = {}) {
     val state by model.photos.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
@@ -45,6 +47,7 @@ fun PhotoGallery(model: ProgressViewModel) {
     var comparing by rememberSaveable { mutableStateOf(false) }
     var guide by rememberSaveable { mutableStateOf(false) }
     var consent by rememberSaveable { mutableStateOf(false) }
+    var options by rememberSaveable { mutableStateOf(false) }
     var pendingCopy by rememberSaveable { mutableStateOf<String?>(null) }
     var localMessage by rememberSaveable { mutableStateOf<String?>(null) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -56,12 +59,14 @@ fun PhotoGallery(model: ProgressViewModel) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) model.add(uri) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture(), model::captured)
     val row = state.photos.firstOrNull { it.id == selected }
+    fun openPhoto(id: String) { localMessage = null; model.clearPhotoMessage(); selected = id }
     LaunchedEffect(state.photos) { compare = ArrayList(compare.filter { id -> state.photos.any { it.id == id } }) }
     BackHandler(selected != null || comparing) { selected = null; comparing = false }
     Column(Modifier.fillMaxSize()) {
+        if (row == null && !comparing) overviewHeader()
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         val message = localMessage ?: state.message
-        if (message != null) Text(message, Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("photoMessage"), style = MaterialTheme.typography.bodySmall)
+        if (row == null && message != null) Text(message, Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("photoMessage"), style = MaterialTheme.typography.bodySmall)
         if (comparing && compare.size == 2) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Photo comparison", style = MaterialTheme.typography.titleMedium)
@@ -77,7 +82,7 @@ fun PhotoGallery(model: ProgressViewModel) {
                 }
             }
         } else if (row != null) {
-            PhotoDetails(row, model.app.photos.file(row.sha256), state.busy, onBack = { selected = null },
+            PhotoDetails(row, model.app.photos.file(row.sha256), state.busy, message, onBack = { selected = null },
                 onSave = { date, caption -> model.edit(row.id, date, caption) }, onDelete = { model.delete(row.id); selected = null },
                 onCopy = { if (needsPermission()) { pendingCopy = row.id; permission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) } else model.copy(row.id) },
                 onOpen = row.galleryUri?.let { uri -> {
@@ -87,9 +92,11 @@ fun PhotoGallery(model: ProgressViewModel) {
         } else {
             LazyColumn(Modifier.fillMaxSize().testTag("photoList"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item {
-                    FittCard {
-                        Text("Your private timeline", style = MaterialTheme.typography.titleLarge)
-                        Text("Private on this device. Include photos in your ZIP backups.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (state.photos.isEmpty()) {
+                            Text("Your private timeline", style = MaterialTheme.typography.titleLarge)
+                            Text("Private on this device. Include photos in your ZIP backups.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button({ localMessage = null; picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, enabled = !state.busy, modifier = Modifier.weight(1f).testTag("addPhoto")) { Text("Choose photo") }
                             OutlinedButton({
@@ -97,15 +104,21 @@ fun PhotoGallery(model: ProgressViewModel) {
                                 try { camera.launch(model.captureUri()) } catch (_: Exception) { model.clearCapture(); localMessage = "No camera app is available. Choose a photo from your phone instead." }
                             }, enabled = !state.busy, modifier = Modifier.weight(1f)) { Text("Take photo") }
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Also save new photos to phone gallery", fontWeight = FontWeight.SemiBold)
-                                Text("Optional · Pictures/Fitt Progress", style = MaterialTheme.typography.bodySmall)
-                            }
-                            Switch(state.galleryCopies, { enabled -> if (enabled) consent = true else model.copies(false) }, enabled = !state.busy, modifier = Modifier.testTag("galleryCopies"))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${state.photos.size}/200 private photos", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                            if (state.photos.isNotEmpty()) TextButton({ options = !options }, Modifier.testTag("galleryOptions")) { Text(if (options) "Hide options" else "Gallery options") }
                         }
-                        Text("${state.photos.size}/200 private photos · shared copies are independent", style = MaterialTheme.typography.bodySmall)
-                        TextButton({ guide = true }) { Text("Photo storage & backup guide") }
+                        if (state.photos.isEmpty() || options) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Also save new photos to phone gallery", fontWeight = FontWeight.SemiBold)
+                                    Text("Optional · Pictures/Fitt Progress", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Switch(state.galleryCopies, { enabled -> if (enabled) consent = true else model.copies(false) }, enabled = !state.busy, modifier = Modifier.testTag("galleryCopies"))
+                            }
+                            Text("Phone-gallery copies are independent of private photos.", style = MaterialTheme.typography.bodySmall)
+                            TextButton({ guide = true }, Modifier.testTag("photoGuide")) { Text("Photo storage & backup guide") }
+                        }
                         if (compare.isNotEmpty()) {
                             Button({ comparing = true }, enabled = compare.size == 2) { Text("Compare selected (${compare.size}/2)") }
                             TextButton({ compare = arrayListOf() }) { Text("Clear selection") }
@@ -118,10 +131,10 @@ fun PhotoGallery(model: ProgressViewModel) {
                         pair.forEach { photo ->
                             Card(Modifier.weight(1f)) {
                                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    PrivatePhoto(model.app.photos.file(photo.sha256), "Progress photo, ${photo.date}", Modifier.fillMaxWidth().height(190.dp).clickable { selected = photo.id })
+                                    PrivatePhoto(model.app.photos.file(photo.sha256), "Progress photo, ${photo.date}", Modifier.fillMaxWidth().height(190.dp).clickable { openPhoto(photo.id) })
                                     Text(photo.date, fontWeight = FontWeight.SemiBold)
                                     if (photo.caption.isNotBlank()) Text(photo.caption, maxLines = 2, style = MaterialTheme.typography.bodySmall)
-                                    TextButton({ selected = photo.id }) { Text("Open photo") }
+                                    TextButton({ openPhoto(photo.id) }, Modifier.testTag("openPhoto-${photo.id}")) { Text("Open photo") }
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Checkbox(photo.id in compare, { checked -> compare = ArrayList(if (!checked) compare - photo.id else (compare + photo.id).takeLast(2)) })
                                         Text("Compare", style = MaterialTheme.typography.labelMedium)
@@ -143,7 +156,7 @@ fun PhotoGallery(model: ProgressViewModel) {
 }
 
 @Composable
-private fun PhotoDetails(row: PhotoEntity, file: File, busy: Boolean, onBack: () -> Unit,
+private fun PhotoDetails(row: PhotoEntity, file: File, busy: Boolean, message: String?, onBack: () -> Unit,
     onSave: (String, String) -> Unit, onDelete: () -> Unit, onCopy: () -> Unit, onOpen: (() -> Unit)?) {
     var date by rememberSaveable(row.id, row.date) { mutableStateOf(row.date) }
     var caption by rememberSaveable(row.id, row.caption) { mutableStateOf(row.caption) }
@@ -151,13 +164,16 @@ private fun PhotoDetails(row: PhotoEntity, file: File, busy: Boolean, onBack: ()
     var discard by rememberSaveable { mutableStateOf(false) }
     val changed = date != row.date || caption != row.caption
     val validDate = runCatching { LocalDate.parse(date).toString() == date }.getOrDefault(false)
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     fun back() { if (changed) discard = true else onBack() }
     BackHandler { if (!busy) back() }
-    Column {
-        PageHeader("Photo details", onBack = { if (!busy) back() }, action = { TextButton({ onSave(date, caption) }, enabled = !busy && changed && validDate && caption.length <= 16_384, modifier = Modifier.testTag("savePhoto")) { Text("Save") } })
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxSize().testTag("photoDetails")) {
+        PageHeader("Photo details", onBack = { if (!busy) back() }, action = { FilledTonalButton({ focus.clearFocus(); keyboard?.hide(); onSave(date, caption) }, enabled = !busy && changed && validDate && caption.length <= 16_384, modifier = Modifier.testTag("savePhoto")) { Text("Save") } })
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp).testTag("photoDetailsContent"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (message != null) Text(message, Modifier.testTag("photoMessage"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             PrivatePhoto(file, "Progress photo, ${row.date}", Modifier.fillMaxWidth().height(340.dp), large = true)
-            OutlinedTextField(date, { date = it }, Modifier.fillMaxWidth().testTag("photoDate"), label = { Text("Date (YYYY-MM-DD)") }, singleLine = true, isError = !validDate, enabled = !busy)
+            DateInputField(date, { date = it }, Modifier.fillMaxWidth().testTag("photoDate"), enabled = !busy)
             OutlinedTextField(caption, { caption = it }, Modifier.fillMaxWidth().testTag("photoCaption"), label = { Text("Caption / notes") }, minLines = 2, maxLines = 6, enabled = !busy, isError = caption.length > 16_384)
             Text("Private file · ${row.width} × ${row.height} · ${row.byteCount / 1024} KiB", style = MaterialTheme.typography.bodySmall)
             OutlinedButton(onCopy, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Save phone-gallery copy") }
@@ -183,14 +199,21 @@ private fun PrivatePhoto(file: File, description: String, modifier: Modifier, la
 
 @Composable
 fun PhotoGuide(onDismiss: () -> Unit) {
+    var details by rememberSaveable { mutableStateOf(false) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Your photos, on your device") }, text = {
         Column(Modifier.heightIn(max = 450.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("Fitt keeps a private copy. Your original photo stays untouched.")
+            Text("Phone-gallery copies are optional. They go in Pictures/Fitt Progress and stay independent of your private photos.")
+            Text("Back up with ZIP and Include private photos before uninstalling or clearing Fitt.", fontWeight = FontWeight.SemiBold, modifier = Modifier.testTag("photoBackupTip"))
+            TextButton({ details = !details }, Modifier.testTag("photoGuideMore")) { Text(if (details) "Fewer details" else "More details") }
+            if (details) {
             Text("1. Add a photo\nChoose photo opens Android's photo picker. Fitt saves a separate private image; your original stays untouched. New imports are resized to at most 2048 px and re-encoded as JPEG without original EXIF/location metadata.")
             Text("2. Build your timeline\nOpen a photo to set its date and caption. Select two entries to compare. Use similar lighting and framing for useful comparisons.")
             Text("3. Optional phone album\nEnable gallery copies to create Pictures/Fitt Progress on the next photo you add. Copies appear in gallery apps and may follow their cloud-backup settings. Existing entries can be copied individually. These are independent copies: edits or deletion on either side do not sync.")
             Text("4. Back up photos\nChoose ZIP in Backups with Include private photos enabled. JSON/CSV exclude photos and preserve existing private photos on restore. Restored photos stay private; copy them to the phone gallery only if you choose.")
             Text("Private app storage is not a locked album: someone using your unlocked phone can open Fitt. Uninstalling or clearing Fitt removes private photos, so keep a ZIP backup somewhere private. Shared gallery copies remain. Fitt does not upload photos and never shares them with Health Connect.")
             Text("Limits: 200 entries, 20 MiB / 100 MP source image, 5 MiB per prepared JPEG, 256 MiB per ZIP. Backups are not password-protected.")
+            }
         }
     }, confirmButton = { TextButton(onDismiss, Modifier.testTag("photoGuideDone")) { Text("Got it") } })
 }
